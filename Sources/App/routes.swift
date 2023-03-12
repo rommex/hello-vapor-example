@@ -39,6 +39,7 @@ struct DomainList: Content {
 }
 
 var subscriptions: TxsSubscriptions = TxsSubscriptions()
+//var cronTimer: Timer? = nil
 
 func routes(_ app: Application) throws {
     
@@ -53,9 +54,11 @@ func routes(_ app: Application) throws {
         }
         let token = subscriptions.addNew(subscription: domains)
         
-        Task {
-            await refreshHash(for: token)
-        }
+//        Task {
+//            await refreshHash(for: token)
+//        }
+        
+//        startTimerIfNecessary()
         
         return token
     }
@@ -73,7 +76,7 @@ func routes(_ app: Application) throws {
         guard let token = req.parameters.get("token") else {
             throw Abort(.badRequest)
         }
-        
+        await refreshHash(for: token)
         guard let hashRecord = subscriptions.find(byToken: token) else {
             throw Abort(.notFound)
         }
@@ -100,6 +103,14 @@ func routes(_ app: Application) throws {
             print(binary)
         }
     }
+    
+//    func startTimerIfNecessary() {
+//        guard cronTimer == nil else { return }
+//        cronTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { _ in
+//            refreshAllHashes()
+//        }
+//        cronTimer?.fire()
+//    }
     
     func parseDomainList(_ req: Request) throws -> [String] {
         let data = try req.content.decode(DomainList.self)
