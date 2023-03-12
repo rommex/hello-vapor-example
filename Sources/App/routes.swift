@@ -76,7 +76,7 @@ func routes(_ app: Application) throws {
         guard let token = req.parameters.get("token") else {
             throw Abort(.badRequest)
         }
-        await refreshHash(for: token)
+        await refreshHash(for: token, request: req)
         guard let hashRecord = subscriptions.find(byToken: token) else {
             throw Abort(.notFound)
         }
@@ -116,20 +116,22 @@ func routes(_ app: Application) throws {
         return data.domains
     }
     
-    @Sendable func refreshHash(for token: String) async {
+    @Sendable func refreshHash(for token: String, request: Request) async {
         guard let hashRecord = subscriptions.find(byToken: token) else { return }
-        guard let endpoint = Endpoint.transactionsByDomainsPost(domains: hashRecord.domains, page: 1, perPage: 1000) else { return }
-        guard let data = try? await NetworkService().fetchData(for: endpoint.url!, body: endpoint.body, method: .post, extraHeaders: endpoint.headers) else { return }
+        guard let endpoint = Endpoint.transactionsByDomainsPost(domains: hashRecord.domains, page: 1, perPage: 900) else { return }
+        
+        
+        guard let data = try? await NetworkService().fetchDataPost(for: endpoint, req: request) else { return }
         let hashed = SHA256.hash(data: data).hex
         subscriptions.update(hash: hashed, for: token)
     }
     
-    func refreshAllHashes() {
-        subscriptions.allTokens.forEach { token in
-            Task {
-                await refreshHash(for: token)
-            }
-        }
-    }
+//    func refreshAllHashes() {
+//        subscriptions.allTokens.forEach { token in
+//            Task {
+//                await refreshHash(for: token)
+//            }
+//        }
+//    }
 
 }
