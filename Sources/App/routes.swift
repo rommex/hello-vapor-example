@@ -1,17 +1,27 @@
 import Vapor
 
+struct HashRecord {
+    let token: String
+    var wallets: [String]
+    var lastUpdated: Date?
+    var lastRequested: Date?
+    var hash: String?
+}
+
 struct TxsSubscriptions {
-    private var subs: [String: [String]] = [:]
+    private var subs: [HashRecord] = []
     
     mutating func addNew(subscription: [String]) -> String {
         let newToken = UUID().uuidString
-        subs[newToken] = subscription
+        subs.append(HashRecord(token: newToken, wallets: subscription, lastRequested: nil))
         return newToken
     }
     
-    mutating func remove(token: String) -> [String]? {
-        subs.removeValue(forKey: token)
+    mutating func remove(token: String) {
+        subs.removeAll(where: {$0.token == token})
     }
+    
+    private var hashes: [HashRecord] = []
 }
 
 struct WalletList: Content {
@@ -27,7 +37,7 @@ func routes(_ app: Application) throws {
     // GET GET ud/txs/unsubscribe/<:token>
     // GET ud/txs/hash/<:token>
     
-    app.get("ud", "txs", "subscribe") { req -> String in
+    app.post("ud", "txs", "subscribe") { req -> String in
         guard let wallets = try? parseWalletList(req) else {
             throw Abort(.badRequest)
         }
@@ -40,18 +50,18 @@ func routes(_ app: Application) throws {
         return token
     }
         
-    app.get("ud", "txs", "unsubscribe", ":token") { req -> [String] in
+    app.get("ud", "txs", "unsubscribe", ":token") { req -> String in
         guard let token = req.parameters.get("token") else {
             throw Abort(.badRequest)
         }
         
-        let removed = subscriptions.remove(token: token)
-        return removed ?? []
+        subscriptions.remove(token: token)
+        return "OK"
     }
     
     //
     
-    app.webSocket("") { req, ws in
+    app.webSocket("ud", "subscribe", ":token") { req, ws in
         // Connected WebSocket.
         print(ws)
         
