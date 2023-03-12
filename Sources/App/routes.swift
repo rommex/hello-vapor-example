@@ -2,7 +2,7 @@ import Vapor
 
 struct HashRecord {
     let token: String
-    var wallets: [String]
+    var domains: [String]
     var lastUpdated: Date?
     var lastRequested: Date?
     var hash: String?
@@ -11,9 +11,11 @@ struct HashRecord {
 struct TxsSubscriptions {
     private var subs: [HashRecord] = []
     
+    var allTokens: [String] { subs.map({ $0.token})}
+    
     mutating func addNew(subscription: [String]) -> String {
         let newToken = UUID().uuidString
-        subs.append(HashRecord(token: newToken, wallets: subscription, lastRequested: nil))
+        subs.append(HashRecord(token: newToken, domains: subscription, lastRequested: nil))
         return newToken
     }
     
@@ -21,11 +23,19 @@ struct TxsSubscriptions {
         subs.removeAll(where: {$0.token == token})
     }
     
-    private var hashes: [HashRecord] = []
+    func find(byToken token: String) -> HashRecord?{
+        subs.first(where: {$0.token == token})
+    }
+    
+    mutating func update(hash: String, for token: String) {
+        guard let enumeratedElement = subs.enumerated().first(where: {$0.element.token == token}) else { return }
+        subs[enumeratedElement.offset].hash = hash
+        subs[enumeratedElement.offset].lastUpdated = Date()
+    }
 }
 
-struct WalletList: Content {
-    let wallets: [String]
+struct DomainList: Content {
+    let domains: [String]
 }
 
 var subscriptions: TxsSubscriptions = TxsSubscriptions()
@@ -33,18 +43,18 @@ var subscriptions: TxsSubscriptions = TxsSubscriptions()
 func routes(_ app: Application) throws {
     
     // API for UD:
-    // POST /ud/txs/subscribe { wallets: ["0x193497394"] } -> token
+    // POST /ud/txs/subscribe { domains: ["0x193497394"] } -> token
     // GET GET ud/txs/unsubscribe/<:token>
     // GET ud/txs/hash/<:token>
     
     app.post("ud", "txs", "subscribe") { req -> String in
-        guard let wallets = try? parseWalletList(req) else {
+        guard let domains = try? parseDomainList(req) else {
             throw Abort(.badRequest)
         }
-        let token = subscriptions.addNew(subscription: wallets)
+        let token = subscriptions.addNew(subscription: domains)
         
-        DispatchQueue.global().async {
-            refreshHash(for: token)
+        Task {
+            await refreshHash(for: token)
         }
         
         return token
@@ -80,17 +90,25 @@ func routes(_ app: Application) throws {
         }
     }
     
-    func parseWalletList(_ req: Request) throws -> [String] {
-        let data = try req.content.decode(WalletList.self)
-        return data.wallets
+    func parseDomainList(_ req: Request) throws -> [String] {
+        let data = try req.content.decode(DomainList.self)
+        return data.domains
     }
     
-    func refreshHash(for token: String) {
-        // TODO:
+    @Sendable func refreshHash(for token: String) async {
+        guard let hashRecord = subscriptions.find(byToken: token) else { return }
+        guard let endpoint = Endpoint.transactionsByDomainsPost(domains: hashRecord.domains, page: 1, perPage: 1000) else { return }
+        guard let data = try? await NetworkService().fetchData(for: endpoint.url!, body: endpoint.body, method: .post, extraHeaders: endpoint.headers) else { return }
+        let hashed = SHA256.hash(data: data).hex
+        subscriptions.update(hash: hashed, for: token)
     }
     
     func refreshAllHashes() {
-        // TODO:
+        subscriptions.allTokens.forEach { token in
+            Task {
+                await refreshHash(for: token)
+            }
+        }
     }
 
 }
