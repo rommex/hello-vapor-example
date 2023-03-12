@@ -69,6 +69,17 @@ func routes(_ app: Application) throws {
         return "OK"
     }
     
+    app.get("ud", "txs", "hash", ":token") { req -> String in
+        guard let token = req.parameters.get("token") else {
+            throw Abort(.badRequest)
+        }
+        
+        guard let hashRecord = subscriptions.find(byToken: token) else {
+            throw Abort(.notFound)
+        }
+        return hashRecord.hash ?? ""
+    }
+    
     //
     
     app.webSocket("ud", "subscribe", ":token") { req, ws in
