@@ -93,8 +93,7 @@ func routes(_ app: Application) throws {
             // String received by this WebSocket.
             print(text)
             Task {
-                let result = try await ws.send("OMG he sent me: \(text)")
-                print(result)
+                try await ws.send("OMG he sent me: \(text)")
             }
         }
 
