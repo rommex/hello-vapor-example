@@ -8,39 +8,6 @@ struct HashRecord {
     var hash: String?
 }
 
-struct TxsSubscriptions {
-    private var subs: [HashRecord] = []
-    
-    var allTokens: [String] { subs.map({ $0.token})}
-    
-    mutating func addNew(subscription: [String]) -> String {
-        let newToken = UUID().uuidString
-        subs.append(HashRecord(token: newToken, domains: subscription, lastRequested: nil))
-        return newToken
-    }
-    
-    mutating func remove(token: String) {
-        subs.removeAll(where: {$0.token == token})
-    }
-    
-    func find(byToken token: String) -> HashRecord?{
-        subs.first(where: {$0.token == token})
-    }
-    
-    mutating func update(hash: String, for token: String) {
-        guard let enumeratedElement = subs.enumerated().first(where: {$0.element.token == token}) else { return }
-        subs[enumeratedElement.offset].hash = hash
-        subs[enumeratedElement.offset].lastUpdated = Date()
-    }
-}
-
-struct DomainList: Content {
-    let domains: [String]
-}
-
-var subscriptions: TxsSubscriptions = TxsSubscriptions()
-//var cronTimer: Timer? = nil
-
 func routes(_ app: Application) throws {
     
     // API for UD:
@@ -53,13 +20,6 @@ func routes(_ app: Application) throws {
             throw Abort(.badRequest)
         }
         let token = subscriptions.addNew(subscription: domains)
-        
-//        Task {
-//            await refreshHash(for: token)
-//        }
-        
-//        startTimerIfNecessary()
-        
         return token
     }
         
@@ -82,56 +42,13 @@ func routes(_ app: Application) throws {
         }
         return hashRecord.hash ?? ""
     }
-    
-    //
-    
-    app.webSocket("ud", "subscribe", ":token") { req, ws in
-        // Connected WebSocket.
-        print(ws)
-        
-        ws.onText { ws, text in
-            // String received by this WebSocket.
-            print(text)
-            Task {
-                try await ws.send("OMG he sent me: \(text)")
-            }
-        }
+}
 
-        ws.onBinary { ws, binary in
-            // [UInt8] received by this WebSocket.
-            print(binary)
-        }
-    }
-    
-//    func startTimerIfNecessary() {
-//        guard cronTimer == nil else { return }
-//        cronTimer = Timer.scheduledTimer(withTimeInterval: 20, repeats: true) { _ in
-//            refreshAllHashes()
-//        }
-//        cronTimer?.fire()
-//    }
-    
-    func parseDomainList(_ req: Request) throws -> [String] {
-        let data = try req.content.decode(DomainList.self)
-        return data.domains
-    }
-    
-    @Sendable func refreshHash(for token: String, request: Request) async {
-        guard let hashRecord = subscriptions.find(byToken: token) else { return }
-        guard let endpoint = Endpoint.transactionsByDomainsPost(domains: hashRecord.domains, page: 1, perPage: 900) else { return }
-        
-        
-        guard let data = try? await NetworkService().fetchDataPost(for: endpoint, req: request) else { return }
-        let hashed = SHA256.hash(data: data).hex
-        subscriptions.update(hash: hashed, for: token)
-    }
-    
-//    func refreshAllHashes() {
-//        subscriptions.allTokens.forEach { token in
-//            Task {
-//                await refreshHash(for: token)
-//            }
-//        }
-//    }
+func parseDomainList(_ req: Request) throws -> [String] {
+    let data = try req.content.decode(DomainList.self)
+    return data.domains
+}
 
+struct DomainList: Content {
+    let domains: [String]
 }

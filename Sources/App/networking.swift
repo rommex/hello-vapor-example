@@ -69,11 +69,11 @@ struct Endpoint {
 }
 
 extension Endpoint {
-    struct DomainArray: Encodable {
+    struct DomainArray: Codable, Content {
         let domain: [String]
     }
     
-    struct TxsArrayRequest: Encodable {
+    struct TxsArrayRequest: Codable, Content {
         let txs: DomainArray
     }
     
@@ -121,24 +121,6 @@ enum UDApiType: String {
     
 }
 
-//struct APIRequest {
-//    let url: URL
-//    let headers: [String: String]
-//    let body: String
-//    let method: NetworkService.HttpRequestMethod
-//    
-//    init (url: URL,
-//          headers: [String: String] = [:],
-//          body: String,
-//          method: NetworkService.HttpRequestMethod = .get) {
-//        self.url = url
-//        self.headers = headers//.appending(dict2: NetworkConfig.stagingAccessKeyIfNecessary)
-//        self.body = body
-//        self.method = method
-//    }
-//}
-
-
 struct NetworkService {
     struct DebugOptions {
 #if TESTFLIGHT
@@ -166,63 +148,23 @@ struct NetworkService {
     
     static let appVersionHeaderKey = "X-IOS-APP-VERSION"
     
-    
-//        func fetchData(for url: URL,
-//                       body: String = "",
-//                       method: HttpRequestMethod = .post,
-//                       extraHeaders: [String: String]  = [:]) async throws -> Data {
-//            let urlRequest = urlRequest(for: url, body: body, method: method, extraHeaders: extraHeaders)
-//
-//            do {
-//                let (data, response) = try await URLSession.shared.data(for: urlRequest, delegate: nil)
-//                guard let response = response as? HTTPURLResponse else {
-//                    throw NetworkLayerError.badResponseOrStatusCode
-//                }
-//
-//                if response.statusCode < 300 {
-//                    return data
-//                } else {
-//                    if response.statusCode == Constants.backEndThrottleErrorCode {
-//                        Debugger.printWarning("Request failed due to backend throttling issue")
-//                        throw NetworkLayerError.backendThrottle
-//                    }
-//                    let message = extractErrorMessage(from: data)
-//                    throw NetworkLayerError.badResponseOrStatusCode
-//                }
-//            } catch {
-//                let error = error as NSError
-//                switch error.code {
-//                case NSURLErrorNetworkConnectionLost, NSURLErrorCancelled:
-//                    throw NetworkLayerError.connectionLost
-//                case NSURLErrorNotConnectedToInternet:
-//                    throw NetworkLayerError.notConnectedToInternet
-//                default:
-//                    if let networkError = error as? NetworkLayerError {
-//                        throw networkError
-//                    }
-//                    Debugger.printFailure("Error \(error.code) - \(error.localizedDescription)", critical: false)
-//                    throw NetworkLayerError.noMessageError
-//                }
-//            }
-//        }
-    
-    func fetchDataPost(for endpoint: Endpoint, req: Request) async throws -> Data? {
+    func fetchDataPost(for endpoint: Endpoint, domains: [String], req: Request) async throws -> Data? {
         let tupleArray = endpoint.headers.map { (key, value) -> (String, String) in
             return (key, value)
         }
-        let response: ClientResponse = try await req.client.post("https://unstoppabledomains.com/api/v1/resellers/mobile-app-v1/txs?page=1&perPage=1000",
-                                                 headers: HTTPHeaders(tupleArray), // tupleArray
-                                                                 content: endpoint.body)
         
-        let r1 = try await req.client.get("https://unstoppabledomains.com/api/v1/resellers/mobile-app-v1/version")
+        let response: ClientResponse = try await req.client.post( URI(string: endpoint.url!.absoluteString) ) { myreq in
+            try myreq.content.encode(Endpoint.TxsArrayRequest(txs: Endpoint.DomainArray(domain: domains.map({ $0 }))))
+            myreq.headers = HTTPHeaders(tupleArray)
+        }
+            
         switch response.status {
-        case .ok: print("OK")
-            return response.body?.getData(at: 0, length: response.body?.capacity ?? 0, byteTransferStrategy: .automatic)
+        case .ok:
+            return response.body?.getData(at: 0, length: response.body?.readableBytes ?? 0, byteTransferStrategy: .automatic)
         default:
                 throw NetworkLayerError.badResponseOrStatusCode
         }
     }
-    
 }
 
 enum NetworkLayerError: LocalizedError {
@@ -253,14 +195,6 @@ enum NetworkLayerError: LocalizedError {
     case failedBuildSignRequest
 
     static let tooManyResponsesCode = -32005
-    
-//    static func parse (errorResponse: ErrorResponseHolder) -> NetworkLayerError? {
-//        let error = errorResponse.error
-//        if error.code == tooManyResponsesCode {
-//            return .tooManyResponses
-//        }
-//        return nil
-//    }
     
     var rawValue: String {
         switch self {
